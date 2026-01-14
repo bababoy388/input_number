@@ -89,23 +89,40 @@
             align-items: center;
             user-select: none;
         }
-        
-        .key:hover {
-            background-color: #333;
+
+        /* Убираем все эффекты при фокусе и наведении, оставляем только активное состояние */
+        .key:focus,
+        .key:hover,
+        .scan-button:focus,
+        .scan-button:hover,
+        .backspace-button:focus,
+        .backspace-button:hover {
+            outline: none;
+            background-color: #ffffff; /* Оригинальный цвет фона */
+            color: #292e34;
         }
-        
-        .key:active {
-            background-color: #3a3a3a;
+
+        /* Для специальных кнопок сохраняем оригинальный цвет текста */
+        .scan-button:focus,
+        .scan-button:hover {
+            color: black;
+        }
+
+        /* Эффект только при нажатии (active) - кнопка становится темнее */
+        .key:active,
+        .scan-button:active,
+        .backspace-button:active {
+            background-color: #e0e0e0; /* Темнее при нажатии */
             transform: scale(0.97);
         }
-        
+
         .bottom-row {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
             gap: 12px;
             margin-top: 0;
         }
-        
+
         .scan-button {
             background-color: #FFFFFF;
             color: black;
@@ -114,25 +131,17 @@
             letter-spacing: 0.5px;
             grid-column: 1;
         }
-        
-        .scan-button:hover {
-            background-color: #0056cc;
-        }
-        
+
         .zero-button {
             grid-column: 2;
         }
-        
+
         .backspace-button {
             grid-column: 3;
             background-color: #ffffff;
             font-size: 20px;
         }
-        
-        .backspace-button:hover {
-            background-color: #444;
-        }
-        
+
         .hint {
             text-align: center;
             color: #888;
@@ -140,22 +149,49 @@
             margin-top: 25px;
             line-height: 1.5;
         }
-        
+
+        .status-message {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 500;
+            display: none;
+        }
+
+        .status-success {
+            background-color: rgba(46, 204, 113, 0.2);
+            color: #2ecc71;
+            border: 1px solid #2ecc71;
+        }
+
+        .status-error {
+            background-color: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+
+        .status-info {
+            background-color: rgba(52, 152, 219, 0.2);
+            color: #3498db;
+            border: 1px solid #3498db;
+        }
+
         @media (max-width: 480px) {
             .container {
                 padding: 20px;
             }
-            
+
             .key {
                 height: 65px;
             }
-            
+
             .code-input {
                 width: 45px;
                 height: 60px;
                 font-size: 24px;
-}
-            
+            }
+
             .scan-button {
                 font-size: 14px;
             }
@@ -172,9 +208,9 @@
             <input type="text" class="code-input" maxlength="1" inputmode="numeric" pattern="\d*">
             <input type="text" class="code-input" maxlength="1" inputmode="numeric" pattern="\d*">
         </div>
-        
+
         <div class="input-label">⛶ Введите код с наклейки</div>
-        
+
         <div class="keyboard">
             <button class="key" data-value="1">1</button>
             <button class="key" data-value="2">2</button>
@@ -186,11 +222,25 @@
             <button class="key" data-value="8">8</button>
             <button class="key" data-value="9">9</button>
         </div>
-        
+
         <div class="bottom-row">
             <button class="key scan-button" id="scan-btn">Сканировать</button>
             <button class="key zero-button" data-value="0">0</button>
             <button class="key backspace-button" id="backspace-btn">⌫</button>
+        </div>
+
+        <!-- Статусные сообщения -->
+        <div id="telegram-status" class="status-message status-info" style="display: none;">
+            ✓ Открыто в Telegram. Код будет отправлен боту автоматически.
+        </div>
+        <div id="success-status" class="status-message status-success" style="display: none;">
+            ✓ Код успешно отправлен!
+        </div>
+        <div id="error-status" class="status-message status-error" style="display: none;">
+            ✗ Ошибка отправки. Откройте через Telegram бота.
+        </div>
+        <div id="test-status" class="status-message status-info" style="display: none;">
+            ⚠️ Тестовый режим. В рабочем режиме откройте через Telegram.
         </div>
     </div>
 
@@ -200,24 +250,157 @@
             const keyButtons = document.querySelectorAll('.key[data-value]');
             const scanButton = document.getElementById('scan-btn');
             const backspaceButton = document.getElementById('backspace-btn');
-            
+
+            // Элементы статуса
+            const telegramStatus = document.getElementById('telegram-status');
+            const successStatus = document.getElementById('success-status');
+            const errorStatus = document.getElementById('error-status');
+            const testStatus = document.getElementById('test-status');
+
             let currentInputIndex = 0;
-            
+            let isTelegramWebApp = false;
+
+            // ==================== НАСТРОЙКИ ====================
+            // URL вашего Google Apps Script (если используете)
+            const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+
+            // ==================== ИНИЦИАЛИЗАЦИЯ ====================
+
+            // Проверяем, открыто ли в Telegram Web App
+            function initTelegramIntegration() {
+                if (window.Telegram && window.Telegram.WebApp) {
+                    isTelegramWebApp = true;
+                    telegramStatus.style.display = 'block';
+
+                    // Настраиваем интерфейс под Telegram
+                    Telegram.WebApp.ready();
+                    Telegram.WebApp.expand();
+
+                    console.log('Запущено в Telegram Web App');
+                } else {
+                    console.log('Запущено в браузере, не в Telegram');
+                    testStatus.style.display = 'block';
+                }
+            }
+
+            // ==================== ОТПРАВКА КОДА ====================
+
+            async function sendCodeToTelegram(code) {
+                if (isTelegramWebApp) {
+                    // Способ 1: Telegram Web App (рекомендуется)
+                    return sendViaTelegramWebApp(code);
+                } else {
+                    // Способ 2: Google Apps Script (резервный)
+                    return sendViaGoogleScript(code);
+                }
+            }
+
+            // Отправка через Telegram Web App API
+            function sendViaTelegramWebApp(code) {
+                return new Promise((resolve) => {
+                    try {
+                        // Отправляем данные боту
+                        Telegram.WebApp.sendData(JSON.stringify({
+                            action: 'submit_code',
+                            code: code,
+                            timestamp: new Date().toISOString(),
+                            platform: 'web_app'
+                        }));
+
+                        // Закрываем Web App через 1 секунду
+                        setTimeout(() => {
+                            Telegram.WebApp.close();
+                        }, 1000);
+
+                        resolve(true);
+                    } catch (error) {
+                        console.error('Ошибка Telegram Web App:', error);
+                        resolve(false);
+                    }
+                });
+            }
+
+            // Отправка через Google Apps Script (резервный способ)
+            async function sendViaGoogleScript(code) {
+                try {
+                    // Скрываем тестовое сообщение
+                    testStatus.style.display = 'none';
+
+                    // Показываем сообщение об использовании резервного метода
+                    const backupMsg = document.createElement('div');
+                    backupMsg.className = 'status-message status-info';
+                    backupMsg.textContent = 'Используется резервный метод отправки...';
+                    backupMsg.style.display = 'block';
+                    document.querySelector('.container').appendChild(backupMsg);
+
+                    // Отправляем запрос на Google Apps Script
+                    const response = await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Google Apps Script требует no-cors
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            code: code,
+                            source: 'web_interface',
+                            time: new Date().toISOString()
+                        })
+                    });
+
+                    // Убираем сообщение
+                    setTimeout(() => {
+                        backupMsg.remove();
+                    }, 2000);
+
+                    return true;
+                } catch (error) {
+                    console.error('Ошибка отправки через Google Script:', error);
+                    return false;
+                }
+            }
+
+            // Показать статус отправки
+            function showStatus(type, message = '') {
+                // Скрываем все статусы
+                [successStatus, errorStatus].forEach(el => {
+                    el.style.display = 'none';
+                });
+
+                // Показываем нужный статус
+                if (type === 'success') {
+                    successStatus.style.display = 'block';
+                    if (message) successStatus.textContent = message;
+
+                    // Автоматически скрываем через 3 секунды
+                    setTimeout(() => {
+                        successStatus.style.display = 'none';
+                    }, 3000);
+                } else if (type === 'error') {
+                    errorStatus.style.display = 'block';
+                    if (message) errorStatus.textContent = message;
+                }
+            }
+
+            // ==================== СУЩЕСТВУЮЩАЯ ЛОГИКА ====================
+
             // Фокус на первый инпут при загрузке
             codeInputs[0].focus();
-            
+
+            // Инициализируем интеграцию с Telegram
+            initTelegramIntegration();
+
             // Обработка кликов по цифровым кнопкам
             keyButtons.forEach(button => {
                 button.addEventListener('click', function() {
                     const value = this.getAttribute('data-value');
-                    
+
                     if (currentInputIndex < codeInputs.length) {
                         codeInputs[currentInputIndex].value = value;
                         codeInputs[currentInputIndex].classList.add('filled');
-                        
+
                         // Перемещаем фокус на следующий инпут
                         currentInputIndex++;
-                        
+
                         if (currentInputIndex < codeInputs.length) {
                             codeInputs[currentInputIndex].focus();
                         } else {
@@ -226,26 +409,28 @@
                             checkCode();
                         }
                     }
+
+                    // Убираем фокус с кнопки после клика
+                    this.blur();
                 });
             });
-            
+
             // Обработка ввода с клавиатуры
             codeInputs.forEach((input, index) => {
                 input.addEventListener('input', function(e) {
                     // Оставляем только цифры
                     this.value = this.value.replace(/\D/g, '');
-                    
-                    if (this.value.length > 0) {
 
-this.classList.add('filled');
-                        
+                    if (this.value.length > 0) {
+                        this.classList.add('filled');
+
                         // Переходим к следующему полю
                         if (index < codeInputs.length - 1) {
                             codeInputs[index + 1].focus();
                         }
-                        
+
                         currentInputIndex = index + 1;
-                        
+
                         // Проверяем, если все поля заполнены
                         if (index === codeInputs.length - 1) {
                             checkCode();
@@ -254,7 +439,7 @@ this.classList.add('filled');
                         this.classList.remove('filled');
                     }
                 });
-                
+
                 // Обработка удаления (Backspace)
                 input.addEventListener('keydown', function(e) {
                     if (e.key === 'Backspace' && this.value === '' && index > 0) {
@@ -268,19 +453,19 @@ this.classList.add('filled');
                         currentInputIndex = index;
                     }
                 });
-                
+
                 // Обработка клика по полю ввода
                 input.addEventListener('click', function() {
                     currentInputIndex = index;
                 });
-                
+
                 // Обработка фокуса
                 input.addEventListener('focus', function() {
                     this.select();
                     // При фокусе убираем белый цвет, чтобы показать синий
                     this.classList.remove('filled');
                 });
-                
+
                 // При потере фокуса, если поле заполнено, возвращаем белый цвет
                 input.addEventListener('blur', function() {
                     if (this.value.length > 0) {
@@ -288,7 +473,7 @@ this.classList.add('filled');
                     }
                 });
             });
-            
+
             // Кнопка "Назад" (Backspace)
             backspaceButton.addEventListener('click', function() {
                 if (currentInputIndex > 0 && currentInputIndex < codeInputs.length) {
@@ -296,7 +481,7 @@ this.classList.add('filled');
                     if (codeInputs[currentInputIndex].value === '') {
                         currentInputIndex--;
                     }
-                    
+
                     codeInputs[currentInputIndex].value = '';
                     codeInputs[currentInputIndex].classList.remove('filled');
                     codeInputs[currentInputIndex].focus();
@@ -307,32 +492,35 @@ this.classList.add('filled');
                     codeInputs[currentInputIndex].classList.remove('filled');
                     codeInputs[currentInputIndex].focus();
                 }
+
+                // Убираем фокус с кнопки после клика
+                this.blur();
             });
-            
-            // Кнопка "Сканировать"
+
+            // Кнопка "Сканировать" (теперь отправляет тестовый код)
             scanButton.addEventListener('click', function() {
-                // В реальном приложении здесь будет логика для сканирования
-                alert('В реальном приложении здесь будет запущена камера для сканирования кода');
-                
                 // Для демонстрации - заполняем поля случайным 6-значным кодом
                 const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-codeInputs.forEach((input, index) => {
+                codeInputs.forEach((input, index) => {
                     input.value = randomCode[index] || '';
                     input.classList.add('filled');
                 });
-                
+
                 currentInputIndex = codeInputs.length;
                 checkCode();
+
+                // Убираем фокус с кнопки после клика
+                this.blur();
             });
-            
+
             // Автофокус и обработка клавиш для улучшения UX
             document.addEventListener('keydown', function(e) {
                 // Цифровые клавиши 0-9
                 if (e.key >= '0' && e.key <= '9' && currentInputIndex < codeInputs.length) {
                     codeInputs[currentInputIndex].value = e.key;
                     codeInputs[currentInputIndex].classList.add('filled');
-                    
+
                     if (currentInputIndex < codeInputs.length - 1) {
                         codeInputs[currentInputIndex + 1].focus();
                         currentInputIndex++;
@@ -340,46 +528,45 @@ codeInputs.forEach((input, index) => {
                         checkCode();
                     }
                 }
-                
+
                 // Стрелки для навигации
                 if (e.key === 'ArrowLeft' && currentInputIndex > 0) {
                     currentInputIndex--;
                     codeInputs[currentInputIndex].focus();
                 }
-                
+
                 if (e.key === 'ArrowRight' && currentInputIndex < codeInputs.length - 1) {
                     currentInputIndex++;
                     codeInputs[currentInputIndex].focus();
                 }
-                
+
                 // Backspace
                 if (e.key === 'Backspace') {
                     backspaceButton.click();
                 }
-                
+
                 // Enter для проверки кода
                 if (e.key === 'Enter') {
                     checkCode();
                 }
             });
-            
+
             // Функция проверки заполненности кода
-            function checkCode() {
+            async function checkCode() {
                 const code = Array.from(codeInputs).map(input => input.value).join('');
                 if (code.length === 6) {
                     console.log('Код введен:', code);
-                    // Здесь можно добавить логику проверки кода
-                    // Например, отправить на сервер или проверить локально
-                    
-                    // Визуальная обратная связь - мигание рамок
-                    codeInputs.forEach(input => {
-                        input.style.transition = 'none';
-                        input.style.borderColor = '#4CAF50';
-                        setTimeout(() => {
-                            input.style.transition = 'all 0.2s';
-                            input.style.borderColor = 'white';
-                        }, 300);
-                    });
+
+                    // Отправляем код в Telegram
+                    const success = await sendCodeToTelegram(code);
+
+                    if (success) {
+                        showStatus('success', '✓ Код успешно отправлен!');
+                        console.log('Код отправлен в Telegram');
+                    } else {
+                        showStatus('error', '✗ Ошибка отправки. Попробуйте открыть через Telegram бота.');
+                        console.log('Ошибка отправки кода');
+                    }
                 }
             }
         });

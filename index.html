@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ввод кода</title>
+    
+    <!-- ВАЖНО: Подключаем Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
     <style>
         * {
             box-sizing: border-box;
@@ -260,26 +264,36 @@
             let currentInputIndex = 0;
             let isTelegramWebApp = false;
 
-            // ==================== НАСТРОЙКИ ====================
-            // URL вашего Google Apps Script (если используете)
-            const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
-
             // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
             // Проверяем, открыто ли в Telegram Web App
             function initTelegramIntegration() {
-                if (window.Telegram && window.Telegram.WebApp) {
+                console.log('Проверка окружения Telegram...');
+                console.log('window.Telegram:', window.Telegram);
+                console.log('window.Telegram.WebApp:', window.Telegram?.WebApp);
+                
+                const tg = window.Telegram?.WebApp;
+                
+                // Более надежная проверка: наличие initDataUnsafe означает, что мы в Telegram
+                if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
                     isTelegramWebApp = true;
                     telegramStatus.style.display = 'block';
+                    testStatus.style.display = 'none';
 
                     // Настраиваем интерфейс под Telegram
-                    Telegram.WebApp.ready();
-                    Telegram.WebApp.expand();
-
-                    console.log('Запущено в Telegram Web App');
+                    tg.ready(); // Важно вызвать ready()
+                    tg.expand(); // Расширяем на весь экран
+                    
+                    // Добавляем стили Telegram для лучшей интеграции
+                    document.body.style.backgroundColor = 'var(--tg-theme-secondary-bg-color, #292e34)';
+                    
+                    console.log('✅ Запущено в Telegram Web App');
+                    console.log('User ID:', tg.initDataUnsafe.user.id);
+                    console.log('Username:', tg.initDataUnsafe.user.username);
                 } else {
-                    console.log('Запущено в браузере, не в Telegram');
+                    console.log('❌ Запущено в браузере, не в Telegram');
                     testStatus.style.display = 'block';
+                    telegramStatus.style.display = 'none';
                 }
             }
 
@@ -287,82 +301,55 @@
 
             async function sendCodeToTelegram(code) {
                 if (isTelegramWebApp) {
-                    // Способ 1: Telegram Web App (рекомендуется)
-                    return sendViaTelegramWebApp(code);
+                    return await sendViaTelegramWebApp(code);
                 } else {
-                    // Способ 2: Google Apps Script (резервный)
-                    return sendViaGoogleScript(code);
+                    // Если не в Telegram, показываем инструкцию
+                    showStatus('error', '✗ Откройте приложение через Telegram бота');
+                    return false;
                 }
             }
 
             // Отправка через Telegram Web App API
-            function sendViaTelegramWebApp(code) {
+            async function sendViaTelegramWebApp(code) {
                 return new Promise((resolve) => {
                     try {
+                        console.log('Отправка кода через Telegram Web App:', code);
+                        
                         // Отправляем данные боту
-                        Telegram.WebApp.sendData(JSON.stringify({
+                        const tg = window.Telegram.WebApp;
+                        tg.sendData(JSON.stringify({
                             action: 'submit_code',
                             code: code,
                             timestamp: new Date().toISOString(),
-                            platform: 'web_app'
+                            platform: 'web_app',
+                            user_id: tg.initDataUnsafe?.user?.id
                         }));
 
-                        // Закрываем Web App через 1 секунду
+                        console.log('✅ Данные отправлены через Telegram Web App');
+
+                        // Не закрываем сразу, показываем сообщение об успехе
+                        showStatus('success', '✅ Код успешно отправлен!');
+                        
+                        // Закрываем Web App через 2 секунды
                         setTimeout(() => {
-                            Telegram.WebApp.close();
-                        }, 1000);
+                            if (tg && tg.close) {
+                                tg.close();
+                            }
+                        }, 2000);
 
                         resolve(true);
                     } catch (error) {
-                        console.error('Ошибка Telegram Web App:', error);
+                        console.error('❌ Ошибка Telegram Web App:', error);
+                        showStatus('error', '✗ Ошибка отправки кода');
                         resolve(false);
                     }
                 });
             }
 
-            // Отправка через Google Apps Script (резервный способ)
-            async function sendViaGoogleScript(code) {
-                try {
-                    // Скрываем тестовое сообщение
-                    testStatus.style.display = 'none';
-
-                    // Показываем сообщение об использовании резервного метода
-                    const backupMsg = document.createElement('div');
-                    backupMsg.className = 'status-message status-info';
-                    backupMsg.textContent = 'Используется резервный метод отправки...';
-                    backupMsg.style.display = 'block';
-                    document.querySelector('.container').appendChild(backupMsg);
-
-                    // Отправляем запрос на Google Apps Script
-                    const response = await fetch(GOOGLE_SCRIPT_URL, {
-                        method: 'POST',
-                        mode: 'no-cors', // Google Apps Script требует no-cors
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            code: code,
-                            source: 'web_interface',
-                            time: new Date().toISOString()
-                        })
-                    });
-
-                    // Убираем сообщение
-                    setTimeout(() => {
-                        backupMsg.remove();
-                    }, 2000);
-
-                    return true;
-                } catch (error) {
-                    console.error('Ошибка отправки через Google Script:', error);
-                    return false;
-                }
-            }
-
             // Показать статус отправки
             function showStatus(type, message = '') {
                 // Скрываем все статусы
-                [successStatus, errorStatus].forEach(el => {
+                [successStatus, errorStatus, telegramStatus, testStatus].forEach(el => {
                     el.style.display = 'none';
                 });
 
@@ -378,6 +365,13 @@
                 } else if (type === 'error') {
                     errorStatus.style.display = 'block';
                     if (message) errorStatus.textContent = message;
+                    
+                    // Автоматически скрываем через 5 секунд
+                    setTimeout(() => {
+                        errorStatus.style.display = 'none';
+                    }, 5000);
+                } else if (type === 'telegram') {
+                    telegramStatus.style.display = 'block';
                 }
             }
 
@@ -561,10 +555,8 @@
                     const success = await sendCodeToTelegram(code);
 
                     if (success) {
-                        showStatus('success', '✓ Код успешно отправлен!');
                         console.log('Код отправлен в Telegram');
                     } else {
-                        showStatus('error', '✗ Ошибка отправки. Попробуйте открыть через Telegram бота.');
                         console.log('Ошибка отправки кода');
                     }
                 }
